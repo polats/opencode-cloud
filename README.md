@@ -74,6 +74,26 @@ with mount path `/data` for persistence. Details and caveats: [docs/RAILWAY.md](
 
 ---
 
+## Keeping the Space in sync with GitHub
+
+`.github/workflows/sync-to-hf-space.yml` builds the image, boots it, checks that
+it refuses to start unauthenticated and that it serves an authenticated API and
+the web UI — and only then force-pushes `main` to the Space and waits for it to
+report `RUNNING`. A broken Dockerfile fails on the runner instead of leaving the
+Space stuck in `BUILD_ERROR`.
+
+Configure it under **Settings → Secrets and variables → Actions**:
+
+| Name | Kind | Notes |
+|---|---|---|
+| `HF_TOKEN` | **secret** | A Hugging Face **write** token. The HF username is derived from it, so it is the only secret needed. |
+| `HF_SPACE` | variable | `owner/space-name`. Optional — defaults to this GitHub repo's `owner/name`. A public Space id isn't sensitive, so a variable keeps it readable in logs; a secret of the same name also works. |
+
+GitHub is the source of truth: the sync **force-pushes**, so a commit made only
+in the Space's web UI will be discarded. Edit here, not there.
+
+---
+
 ## Connecting the desktop app or a local web app
 
 You don't have to use the in-browser UI. In the app, **Settings → Servers → Add**

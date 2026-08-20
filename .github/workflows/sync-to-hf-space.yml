@@ -1,0 +1,130 @@
+name: Sync to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two syncs race each other onto the same Space.
+concurrency:
+  group: hf-space-sync
+  cancel-in-progress: false
+
+jobs:
+  # Build and boot the image here first. A Dockerfile that fails on the Space
+  # leaves it sitting in BUILD_ERROR, so it is much cheaper to find out on a
+  # runner than in production.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t opencode-cloud:ci .
+
+      - name: Refuses to start without a password
+        run: |
+          if docker run --rm opencode-cloud:ci; then
+            echo "::error::Container started without OPENCODE_SERVER_PASSWORD set"
+            exit 1
+          fi
+          echo "OK: container refused to start unauthenticated"
+
+      - name: Serves an authenticated API and the web UI
+        run: |
+          PW="ci-$RANDOM-$RANDOM"
+          docker run -d --name oc-ci -p 7860:7860 -e OPENCODE_SERVER_PASSWORD="$PW" opencode-cloud:ci
+
+          for i in $(seq 1 40); do
+            code=$(curl -s -m 3 -o /dev/null -w "%{http_code}" http://127.0.0.1:7860/api/health || true)
+            [ "$code" = "401" ] && break
+            sleep 3
+          done
+
+          echo "--- container log ---"
+          docker logs oc-ci
+
+          if [ "$code" != "401" ]; then
+            echo "::error::Server never came up (last status: ${code:-none})"
+            exit 1
+          fi
+          echo "OK: unauthenticated request rejected with 401"
+
+          body=$(curl -s -m 10 -u "opencode:$PW" http://127.0.0.1:7860/api/health)
+          if [ "$body" != '{"healthy":true}' ]; then
+            echo "::error::Authenticated health check returned: $body"
+            exit 1
+          fi
+          echo "OK: authenticated health check returned $body"
+
+          if ! curl -s -m 30 -u "opencode:$PW" http://127.0.0.1:7860/ | grep -q "<title>"; then
+            echo "::error::Web UI was not served on /"
+            exit 1
+          fi
+          echo "OK: web UI served on /"
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f oc-ci || true
+
+  sync:
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      # Defaults to this GitHub repo's owner/name, which is also the Space id.
+      # Override with a repo variable (or secret) named HF_SPACE.
+      HF_SPACE: ${{ vars.HF_SPACE || secrets.HF_SPACE || github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the force-push below cannot be made from a shallow clone.
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::HF_TOKEN secret is not set (Settings -> Secrets and variables -> Actions)"
+            exit 1
+          fi
+
+          # Any HF username works alongside a token; derive it so there is one
+          # less secret to keep in sync, and so a bad token fails here with a
+          # clear message instead of a confusing git error.
+          user=$(curl -s -f -H "Authorization: Bearer $HF_TOKEN" \
+                   https://huggingface.co/api/whoami-v2 | jq -r '.name // empty')
+          if [ -z "$user" ]; then
+            echo "::error::HF_TOKEN was rejected by huggingface.co (expired, or not a write token?)"
+            exit 1
+          fi
+          echo "Authenticated to Hugging Face as $user; syncing to spaces/$HF_SPACE"
+
+          # GitHub is the source of truth: force-push so a hand-edit made in the
+          # Space's web UI cannot block the sync. Anything committed only on the
+          # Space side is discarded.
+          git push --force "https://${user}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" \
+            "HEAD:refs/heads/main" 2>&1 | sed "s/${HF_TOKEN}/***/g"
+
+      - name: Wait for the Space to come back up
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          for i in $(seq 1 60); do
+            stage=$(curl -s -m 20 -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/api/spaces/${HF_SPACE}" | jq -r '.runtime.stage // "UNKNOWN"')
+            echo "[$i] $stage"
+            case "$stage" in
+              RUNNING)
+                echo "Space is running."
+                exit 0
+                ;;
+              BUILD_ERROR|RUNTIME_ERROR|CONFIG_ERROR)
+                echo "::error::Space ended in $stage — check the build logs at https://huggingface.co/spaces/${HF_SPACE}"
+                exit 1
+                ;;
+            esac
+            sleep 15
+          done
+          echo "::warning::Space did not reach RUNNING within 15 minutes; last stage: $stage"
