@@ -17,7 +17,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build image
         run: docker build -t opencode-cloud:ci .
@@ -75,7 +75,7 @@ jobs:
       # Override with a repo variable (or secret) named HF_SPACE.
       HF_SPACE: ${{ vars.HF_SPACE || secrets.HF_SPACE || github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Full history: the force-push below cannot be made from a shallow clone.
           fetch-depth: 0
