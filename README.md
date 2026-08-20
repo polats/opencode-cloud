@@ -104,6 +104,28 @@ your own domain needs `OPENCODE_CORS_ORIGINS=https://your.domain`.
 
 ---
 
+## Giving the agent Hugging Face access
+
+Set `HF_TOKEN` as a Space secret (or Railway variable) and the agent can create
+and manage Hugging Face repos: the official `hf` CLI is installed in the image,
+it picks the token up from the environment with no login step, and `entrypoint.sh`
+installs [`agents/hf-spaces.md`](agents/hf-spaces.md) as opencode's global
+`AGENTS.md` so the agent knows the recipes. With no `HF_TOKEN` set, that file is
+removed and nothing advertises the capability.
+
+> **This hands your HF account to whoever can reach the server.** A standard HF
+> write token covers every repo the account can write to — including org repos —
+> so the blast radius is much larger than "a shell in a container". Two things
+> make it meaningfully safer:
+>
+> - Use a **fine-grained token** scoped to just the permissions you need (write
+>   access to Spaces, say) rather than an account-wide write token.
+> - Remember the agent reads untrusted content — repos, web pages, issue text.
+>   Anything it reads can try to talk it into using the token. The instructions
+>   tell it never to print the token, but that is a speed bump, not a boundary.
+
+---
+
 ## Read this before you deploy
 
 - **This is a remote shell.** Every route allows command execution and file
@@ -131,6 +153,7 @@ your own domain needs `OPENCODE_CORS_ORIGINS=https://your.domain`.
 | `OPENCODE_STATE_ROOT` | `/data` | Where to look for a writable volume. |
 | `OPENCODE_WORKSPACE` | `$STATE_ROOT/workspace` or `$HOME/workspace` | Directory to serve. |
 | `OPENCODE_CORS_ORIGINS` | — | Comma-separated extra CORS origins. |
+| `HF_TOKEN` | — | Optional. A Hugging Face token, which lets the agent create and manage HF repos with the bundled `hf` CLI. See the warning below. |
 
 Build arg `OPENCODE_VERSION` pins a release (default: latest).
 

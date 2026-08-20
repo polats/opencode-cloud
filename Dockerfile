@@ -12,10 +12,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       jq \
       less \
       openssh-client \
+      python3 \
+      python3-venv \
       ripgrep \
       tar \
       unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Official Hugging Face CLI, so an agent holding HF_TOKEN can create and push
+# repos in one step instead of hand-rolling API calls. Debian marks its Python
+# externally-managed (PEP 668), hence the venv rather than a bare pip install.
+RUN python3 -m venv /opt/hf-cli \
+    && /opt/hf-cli/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/hf-cli/bin/pip install --no-cache-dir "huggingface_hub[cli]" \
+    && for bin in hf huggingface-cli; do \
+         [ -x "/opt/hf-cli/bin/$bin" ] && ln -sf "/opt/hf-cli/bin/$bin" "/usr/local/bin/$bin"; \
+       done \
+    && hf version
 
 # Install opencode at BUILD time so cold starts don't re-download the release.
 # The official installer hardcodes $HOME/.opencode/bin (it ignores
@@ -34,6 +47,7 @@ ENV HOME=/home/node
 ENV PATH=/usr/local/bin:${PATH}
 
 COPY --chown=node:node entrypoint.sh /home/node/entrypoint.sh
+COPY --chown=node:node agents/hf-spaces.md /home/node/agents/hf-spaces.md
 RUN chmod +x /home/node/entrypoint.sh \
     && mkdir -p /home/node/workspace \
     && chown -R node:node /home/node
