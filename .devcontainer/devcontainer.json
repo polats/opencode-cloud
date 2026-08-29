@@ -15,6 +15,14 @@
     "dockerfile": "../Dockerfile"
   },
 
+  // The image ships no SSH server, and without one `gh codespace ssh` and `gh codespace logs`
+  // both refuse — so a codespace that fails to start the server cannot be inspected at all.
+  // This costs nothing at runtime and is the difference between a debuggable box and a black
+  // one.
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+
   // uid 1000, matching the image. The Dockerfile creates nothing else.
   "remoteUser": "node",
 
@@ -48,7 +56,9 @@
   // behave like a server rather than a dev box you have to log into and restart by hand.
   // Backgrounded so the codespace can finish starting; the log is where a refused boot
   // (usually a missing password) explains itself.
-  "postStartCommand": "nohup /home/node/entrypoint.sh > /tmp/opencode.log 2>&1 & echo started",
+  // setsid detaches the server from the shell that postStartCommand runs in, which exits as
+  // soon as it returns; a plain background job is not guaranteed to outlive it.
+  "postStartCommand": "setsid nohup /home/node/entrypoint.sh > /tmp/opencode.log 2>&1 < /dev/null & echo started",
 
   "customizations": {
     "vscode": {
