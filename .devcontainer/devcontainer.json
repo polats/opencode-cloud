@@ -55,10 +55,10 @@
   // Runs on create *and* on every resume from an idle stop, which is what makes the codespace
   // behave like a server rather than a dev box you have to restart by hand.
   //
-  // It goes through start-opencode.sh rather than straight to the entrypoint because
-  // Codespaces secrets are not in this hook's environment — see that script. setsid detaches
-  // the server from the shell, which exits as soon as the hook returns.
-  "postStartCommand": "setsid nohup ${containerWorkspaceFolder}/.devcontainer/start-opencode.sh > /tmp/opencode.log 2>&1 < /dev/null & echo started",
+  // Diagnostic build: records whether the detached server is still alive after the hook
+  // returns, because a hook that launches a process and then loses it looks identical to one
+  // that never ran.
+  "postStartCommand": "bash -c 'D=/tmp/hook.log; { echo \"--- hook $(date -Is)\"; command -v setsid || echo \"no setsid\"; } >> $D 2>&1; setsid nohup ${containerWorkspaceFolder}/.devcontainer/start-opencode.sh >> /tmp/opencode.log 2>&1 < /dev/null & P=$!; echo \"launched pid=$P\" >> $D; sleep 5; if kill -0 $P 2>/dev/null; then echo \"alive after 5s\" >> $D; else echo \"DEAD after 5s\" >> $D; fi; pgrep -f opencode >> $D 2>&1 || echo \"no opencode process\" >> $D'",
 
   "customizations": {
     "vscode": {
