@@ -38,4 +38,9 @@ if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
   echo "            gh secret set OPENCODE_SERVER_PASSWORD --app codespaces --repo OWNER/REPO" >&2
 fi
 
+# entrypoint.sh only uses the state root if it already exists and is writable, and nothing
+# else creates it — so without this every boot reports "persistence: NONE" and sessions and
+# logins are silently lost on the next idle stop.
+mkdir -p "${OPENCODE_STATE_ROOT:-/workspaces/.opencode-state}" 2>/dev/null || true
+
 exec /home/node/entrypoint.sh
