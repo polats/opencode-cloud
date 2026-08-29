@@ -74,6 +74,35 @@ with mount path `/data` for persistence. Details and caveats: [docs/RAILWAY.md](
 
 ---
 
+## Run as a GitHub Codespace
+
+```
+Code -> Codespaces -> Create codespace on main
+```
+
+Set `OPENCODE_SERVER_PASSWORD` first, as a **Codespaces** secret — repository secrets
+and Actions secrets are separate and are not visible here:
+
+```bash
+gh secret set OPENCODE_SERVER_PASSWORD --app codespaces --repo OWNER/REPO
+```
+
+`.devcontainer/devcontainer.json` builds the same Dockerfile, forwards 7860 publicly and
+starts the server on `postStartCommand`. Public is safe only because `entrypoint.sh` refuses
+to start without a password; without the secret the codespace comes up with no server and the
+reason is in `/tmp/opencode.log`.
+
+Unlike a Space or a Railway service, a codespace **stops after 30 minutes idle** (240 maximum).
+It keeps its disk and restarts under the same name and URL, and `postStartCommand` boots the
+server again — but it is not always-on, and GitHub deletes a stopped codespace after the
+retention period, up to 30 days. State lives under `/workspaces/.opencode-state`, so it
+survives a stop and is lost only with the codespace itself.
+
+A personal Free account includes 120 core-hours a month, which is roughly 60 hours of wall
+clock on a 2-core machine; the idle timeout is what keeps that from draining.
+
+---
+
 ## Keeping the Space in sync with GitHub
 
 `.github/workflows/sync-to-hf-space.yml` builds the image, boots it, checks that
@@ -150,7 +179,7 @@ removed and nothing advertises the capability.
 | `OPENCODE_SERVER_PASSWORD` | — | **Required.** Basic auth password. |
 | `OPENCODE_SERVER_USERNAME` | `opencode` | Basic auth username. |
 | `PORT` | `7860` | Listen port. Railway sets this; HF must match `app_port`. |
-| `OPENCODE_STATE_ROOT` | `/data` | Where to look for a writable volume. |
+| `OPENCODE_STATE_ROOT` | `/data` | Where to look for a writable volume. Codespaces sets `/workspaces/.opencode-state`. |
 | `OPENCODE_WORKSPACE` | `$STATE_ROOT/workspace` or `$HOME/workspace` | Directory to serve. |
 | `OPENCODE_CORS_ORIGINS` | — | Comma-separated extra CORS origins. |
 | `HF_TOKEN` | — | Optional. A Hugging Face token, which lets the agent create and manage HF repos with the bundled `hf` CLI. See the warning below. |

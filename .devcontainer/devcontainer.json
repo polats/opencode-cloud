@@ -1,0 +1,58 @@
+// opencode-cloud as a GitHub Codespace — a third home alongside Hugging Face Spaces and
+// Railway.
+//
+// The same Dockerfile serves all three. What differs here is that a dev container starts with
+// its entrypoint overridden, so the image's ENTRYPOINT never runs: the server has to be
+// started explicitly, and started again after every idle stop.
+//
+// Codespaces stop after 30 minutes idle by default. That is fine for this use — a stopped
+// codespace keeps its disk and restarts under the same name and URL — but it does mean
+// postStartCommand, not postCreateCommand, is what boots the server, because only the former
+// runs on every resume.
+{
+  "name": "opencode-cloud",
+  "build": {
+    "dockerfile": "../Dockerfile"
+  },
+
+  // uid 1000, matching the image. The Dockerfile creates nothing else.
+  "remoteUser": "node",
+
+  // Hugging Face has no $PORT and falls back to 7860; keep the same here so one number
+  // describes the server everywhere.
+  "containerEnv": {
+    "PORT": "7860",
+    // entrypoint.sh persists sessions, logins and code under this root when it is writable.
+    // /data does not exist in a codespace, but /workspaces survives stop/start, so state
+    // outlives an idle timeout and is lost only when the codespace itself is deleted.
+    "OPENCODE_STATE_ROOT": "/workspaces/.opencode-state"
+  },
+
+  "forwardPorts": [7860],
+  "portsAttributes": {
+    "7860": {
+      "label": "opencode",
+      // The only way to expose a port without a human toggling it: there is no REST endpoint
+      // for port visibility, so a client that provisions codespaces has to declare it here.
+      //
+      // Public is safe *because* entrypoint.sh refuses to start without
+      // OPENCODE_SERVER_PASSWORD. Every route on this server runs shell commands, so basic
+      // auth is the only thing in front of it; a missing password fails loudly rather than
+      // publishing an open shell.
+      "visibility": "public",
+      "onAutoForward": "silent"
+    }
+  },
+
+  // Runs on create *and* on every resume from an idle stop, which is what makes the codespace
+  // behave like a server rather than a dev box you have to log into and restart by hand.
+  // Backgrounded so the codespace can finish starting; the log is where a refused boot
+  // (usually a missing password) explains itself.
+  "postStartCommand": "nohup /home/node/entrypoint.sh > /tmp/opencode.log 2>&1 & echo started",
+
+  "customizations": {
+    "vscode": {
+      "extensions": []
+    }
+  }
+}
