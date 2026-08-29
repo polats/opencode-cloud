@@ -53,12 +53,12 @@
   },
 
   // Runs on create *and* on every resume from an idle stop, which is what makes the codespace
-  // behave like a server rather than a dev box you have to log into and restart by hand.
-  // Backgrounded so the codespace can finish starting; the log is where a refused boot
-  // (usually a missing password) explains itself.
-  // setsid detaches the server from the shell that postStartCommand runs in, which exits as
-  // soon as it returns; a plain background job is not guaranteed to outlive it.
-  "postStartCommand": "setsid nohup /home/node/entrypoint.sh > /tmp/opencode.log 2>&1 < /dev/null & echo started",
+  // behave like a server rather than a dev box you have to restart by hand.
+  //
+  // It goes through start-opencode.sh rather than straight to the entrypoint because
+  // Codespaces secrets are not in this hook's environment — see that script. setsid detaches
+  // the server from the shell, which exits as soon as the hook returns.
+  "postStartCommand": "setsid nohup ${containerWorkspaceFolder}/.devcontainer/start-opencode.sh > /tmp/opencode.log 2>&1 < /dev/null & echo started",
 
   "customizations": {
     "vscode": {
